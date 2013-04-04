@@ -1,0 +1,77 @@
+#!/usr/bin/python2.7
+# psoul: A stupid netsoul client
+
+import signal, sys
+import argparse
+import socket
+import md5
+
+def sighandler(signum, frame):
+  exit(1)
+
+class NetsoulClient(object):
+
+  def __init__(self, usr, passwd, position="<3", data="none",
+               host="ns-server.epita.fr", port=4242):
+    self.usr = usr
+    self.passwd = passwd
+    self.host = host
+    self.port = port 
+    self.position = position
+    self.data = data
+    try:
+      self.socket = socket.socket()
+      self.socket.connect((host, port))
+    except socket.error:
+      self.die("socket connection failure")
+
+  def close(self):
+    self.socket.close
+
+  def die(self, msg):
+    sys.stderr.write("{}: error: {}\n".format(sys.argv[0], msg))
+    self.close
+    exit(1)
+
+  def send_line(self, msg):
+    self.socket.send("{}\n".format(msg))
+    if not args.quiet:
+      sys.stdout.write(":->: {}\n".format(msg))
+
+  def recv_line(self, size):
+    msg = self.socket.recv(1024)
+    if not args.quiet:
+      sys.stdout.write(":<-: {}".format(msg))
+    return msg
+
+  def is_valid(self, s):
+    if s != "rep 002 -- cmd end\n":
+      self.die("wrong answer form")
+
+  def authentify(self):
+    info = self.recv_line(1024).split()
+    self.send_line("auth_ag ext_user none none")
+    self.is_valid(self.recv_line(1024))
+    md5_tmp = "{}-{}/{}{}".format(info[2], info[3], info[4], self.passwd)
+    md5_tmp = md5.new(md5_tmp).hexdigest()
+    self.send_line("ext_user_log {} {} {} {}".format(self.usr, md5_tmp,
+                                                     self.data, self.position))
+    self.is_valid(self.recv_line(1024))
+    self.send_line("user_cmd state atif")
+    self.is_valid(self.recv_line(1024))
+
+  def run(self):
+    while True:
+      s = self.recv_line(1024).split()
+      print s
+      send_line("{} {}".format(s[0], s[1])) if s[0] == "ping" else exit(1)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
+args = parser.parse_args()
+
+signal.signal(signal.SIGINT, sighandler)
+psoul = NetsoulClient("czegan_g", "passwd")
+psoul.authentify()
+psoul.run
+psoul.close
