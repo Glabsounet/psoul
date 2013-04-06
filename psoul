@@ -47,6 +47,7 @@ class NetsoulClient(object):
   def is_valid(self, s):
     if s != "rep 002 -- cmd end\n":
       self.die("wrong answer form")
+    return s
 
   def authentify(self):
     info = self.recv_line(1024).split()
@@ -58,13 +59,12 @@ class NetsoulClient(object):
                                                      self.data, self.position))
     self.is_valid(self.recv_line(1024))
     self.send_line("user_cmd state atif")
-    self.is_valid(self.recv_line(1024))
 
   def run(self):
+    self.authentify()
     while True:
-      s = self.recv_line(1024).split()
-      print s
-      send_line("{} {}".format(s[0], s[1])) if s[0] == "ping" else exit(1)
+      s = self.recv_line(1024).replace("\n", "")
+      self.send_line(s) if "ping" in s else self.die("Unknown error")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
@@ -72,6 +72,4 @@ args = parser.parse_args()
 
 signal.signal(signal.SIGINT, sighandler)
 psoul = NetsoulClient("czegan_g", "passwd")
-psoul.authentify()
-psoul.run
-psoul.close
+psoul.run()
