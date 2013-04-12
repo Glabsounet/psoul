@@ -25,6 +25,7 @@ class NetsoulClient(object):
     except socket.error, e:
       self.die(e)
 
+  @property
   def close(self):
     self.socket.close
 
@@ -35,12 +36,12 @@ class NetsoulClient(object):
 
   def send_line(self, msg):
     self.socket.send("{}\n".format(msg))
-    if not args.quiet:
+    if args.verbose:
       sys.stdout.write(":->: {}\n".format(msg))
 
   def recv_line(self, size):
     msg = self.socket.recv(1024)
-    if not args.quiet:
+    if args.verbose:
       sys.stdout.write(":<-: {}".format(msg))
     return msg
 
@@ -49,6 +50,7 @@ class NetsoulClient(object):
       self.die("wrong answer form")
     return s
 
+  @property
   def authentify(self):
     info = self.recv_line(1024).split()
     self.send_line("auth_ag ext_user none none")
@@ -60,8 +62,9 @@ class NetsoulClient(object):
     self.is_valid(self.recv_line(1024))
     self.send_line("user_cmd state atif")
 
+  @property
   def run(self):
-    self.authentify()
+    self.authentify
     while True:
       s = self.recv_line(1024).replace("\n", "")
       self.send_line(s) if "ping" in s else self.die("Unknown error")
@@ -69,7 +72,8 @@ class NetsoulClient(object):
 parser = argparse.ArgumentParser()
 parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
 args = parser.parse_args()
+args.verbose = False if args.quiet else True
 
 signal.signal(signal.SIGINT, sighandler)
 psoul = NetsoulClient("czegan_g", "passwd")
-psoul.run()
+psoul.run
