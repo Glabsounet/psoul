@@ -60,13 +60,13 @@ class NetsoulClient(object):
     self.send_line("ext_user_log {} {} {} {}".format(self.usr, md5_tmp,
                                                      self.data, self.position))
     self.is_valid(self.recv_line(1024))
-    self.send_line("user_cmd state atif")
+    self.send_line("user_cmd state actif")
 
   @property
   def run(self):
     self.authentify
     while True:
-      s = self.recv_line(1024).replace("\n", "")
+      s = self.recv_line(1024)
       self.send_line(s) if "ping" in s else self.die("Unknown error")
 
 parser = argparse.ArgumentParser()
