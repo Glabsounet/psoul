@@ -22,8 +22,8 @@ class NetsoulClient(object):
     try:
       self.socket = socket.socket()
       self.socket.connect((host, port))
-    except socket.error:
-      self.die("socket connection failure")
+    except socket.error, e:
+      self.die(e)
 
   def close(self):
     self.socket.close
