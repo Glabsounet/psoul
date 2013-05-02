@@ -7,6 +7,8 @@ import socket
 import md5
 
 def sighandler(signum, frame):
+  if args.verbose:
+    print "\nBye bye"
   exit(1)
 
 class NetsoulClient(object):
@@ -37,16 +39,16 @@ class NetsoulClient(object):
   def send_line(self, msg):
     self.socket.send("{}\n".format(msg))
     if args.verbose:
-      sys.stdout.write(":->: {}\n".format(msg))
+      sys.stdout.write(":send: {}\n".format(msg))
 
   def recv_line(self, size):
-    msg = self.socket.recv(1024)
+    msg = self.socket.recv(size)
     if args.verbose:
-      sys.stdout.write(":<-: {}".format(msg))
+      sys.stdout.write(":recv: {}".format(msg))
     return msg
 
   def is_valid(self, s):
-    if s != "rep 002 -- cmd end\n":
+    if not "rep 002 -- cmd end" in s:
       self.die("wrong answer form")
     return s
 
@@ -57,8 +59,8 @@ class NetsoulClient(object):
     self.is_valid(self.recv_line(1024))
     md5_tmp = "{}-{}/{}{}".format(info[2], info[3], info[4], self.passwd)
     md5_tmp = md5.new(md5_tmp).hexdigest()
-    self.send_line("ext_user_log {} {} {} {}".format(self.usr, md5_tmp,
-                                                     self.data, self.position))
+    self.send_line("ext_user_log {} {} {} {}".
+        format(self.usr, md5_tmp, self.data, self.position))
     self.is_valid(self.recv_line(1024))
     self.send_line("user_cmd state actif")
 
@@ -66,7 +68,7 @@ class NetsoulClient(object):
   def run(self):
     self.authentify
     while True:
-      s = self.recv_line(1024)
+      s = self.recv_line(1024).replace("\n", "")
       self.send_line(s) if "ping" in s else self.die("Unknown error")
 
 parser = argparse.ArgumentParser()
