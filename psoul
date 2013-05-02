@@ -69,7 +69,7 @@ class NetsoulClient(object):
     self.authentify
     while True:
       s = self.recv_line(1024).replace("\n", "")
-      self.send_line(s) if "ping" in s else self.die("Unknown error")
+      self.send_line(s) if "ping" in s else self.authentify
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
