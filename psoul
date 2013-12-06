@@ -12,8 +12,8 @@ class PSoul:
 
   config = {
       'server_address' : ("ns-server.epita.fr", 4242),
-      'login'          : None,
-      'password'       : None,
+      'login'          : "czegan_g",
+      'password'       : "passwd",
       'position'       : "<3".replace(' ', '%20'),
       'data'           : "None".replace(' ', '%20'),
 
@@ -21,10 +21,10 @@ class PSoul:
       'quiet'          : False
       }
 
-  def __init__(self, login, password):
+  def __init__(self, login=None, password=None):
     self._alive = False
-    self.config['login'] = login
-    self.config['password'] = password
+    self.config['login'] = login or self.config['login']
+    self.config['password'] = password or self.config['password']
 
   def __enter__(self):
     self.connect()
@@ -115,13 +115,15 @@ def sighandler(signum, frame):
 
 if __name__ == '__main__':
 
-  parser = argparse.ArgumentParser()
+  parser = argparse.ArgumentParser(usage='%(prog)s [OPTIONS] [login] [password]')
   parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
   parser.add_argument("-v", "--verbose", action="store_true", help="explain what being done")
+  parser.add_argument("login", nargs='?', default=None, help="ionis login (ex: czegan_g)")
+  parser.add_argument("password", nargs='?', default=None, help="unix password")
   args = parser.parse_args()
 
   signal.signal(signal.SIGINT, sighandler)
-  with PSoul("czegan_g", "passwd") as psoul:
+  with PSoul(args.login, args.password) as psoul:
     psoul.config['verbose'] = args.verbose
     psoul.config['quiet'] = args.quiet
     psoul.authentify()
