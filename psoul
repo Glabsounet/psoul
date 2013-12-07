@@ -4,7 +4,6 @@
 import argparse
 import datetime
 import hashlib
-import signal
 import sys
 import socket
 
@@ -80,7 +79,7 @@ class Client:
             self._print_verbose("send: {}".format(msg))
 
 
-class PSoul(Client):
+class PSoul(Client, Hooks):
 
     def validate(self):
         response = self.recv()
@@ -116,11 +115,8 @@ class PSoul(Client):
             if "ping" in data:
                 self.send(data)
 
-def sighandler(signum, frame):
-    sys.stdout.write("\r")
-    exit(0)
-
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser(usage='%(prog)s [OPTIONS] [login] [password]')
     parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
     parser.add_argument("-v", "--verbose", action="store_true", help="explain what being done")
@@ -128,9 +124,11 @@ if __name__ == '__main__':
     parser.add_argument("password", nargs='?', help="unix password")
     args = parser.parse_args()
 
-    signal.signal(signal.SIGINT, sighandler)
-    with PSoul(args.login, args.password) as psoul:
-        psoul.config['verbose'] = args.verbose
-        psoul.config['quiet'] = args.quiet
-        psoul.authentify()
-        psoul.lazyloop()
+    try:
+        with PSoul(args.login, args.password) as psoul:
+            psoul.config['verbose'] = args.verbose
+            psoul.config['quiet'] = args.quiet
+            psoul.authentify()
+            psoul.lazyloop()
+    except KeyboardInterrupt:
+        sys.stdout.write("\r")
