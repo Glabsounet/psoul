@@ -8,7 +8,10 @@ import signal
 import sys
 import socket
 
-class PSoul:
+class Hooks:
+    pass
+
+class Client:
 
     config = {
             'server_address' : ("ns-server.epita.fr", 4242),
@@ -55,28 +58,6 @@ class PSoul:
             self.socket.close()
             self._alive = False
 
-    def authentify(self):
-
-        def md5chunck(salut, socketnb, random_hash, host, port, timestamp):
-            chunck = "{}-{}/{}{}".format(random_hash, host, port, self.config['password'])
-            return hashlib.md5(chunck.encode()).hexdigest()
-
-        if self._alive:
-            if not self.config['quiet']:
-                print("{}: opening connection with {}".format(sys.argv[0], self.config['server_address']))
-            welcome = self.recv().split()
-            self.send("auth_ag ext_user none none\n")
-            self.validate()
-            login = "{} {}".format(self.config['login'], md5chunck(*welcome))
-            self.send("ext_user_log {} {} {}\n".format(login, self.config['data'], self.config['position']))
-            self.validate()
-            self.send_state("actif")
-
-    def validate(self):
-        response = self.recv()
-        if not "rep 002 -- cmd end" in response:
-            self.die("unexpected response from server: '{}'".format(response.strip('\n')))
-
     def _print_verbose(self, msg):
         now = datetime.datetime.now().strftime("%H:%M")
         log = "{} :: {}".format(now, msg)
@@ -97,6 +78,31 @@ class PSoul:
             self.socket.send(msg.encode())
         if self.config['verbose'] and not self.config['quiet']:
             self._print_verbose("send: {}".format(msg))
+
+
+class PSoul(Client):
+
+    def validate(self):
+        response = self.recv()
+        if not "rep 002 -- cmd end" in response:
+            self.die("unexpected response from server: '{}'".format(response.strip('\n')))
+
+    def authentify(self):
+
+        def md5chunck(salut, socketnb, random_hash, host, port, timestamp):
+            chunck = "{}-{}/{}{}".format(random_hash, host, port, self.config['password'])
+            return hashlib.md5(chunck.encode()).hexdigest()
+
+        if self._alive:
+            if not self.config['quiet']:
+                print("{}: opening connection with {}".format(sys.argv[0], self.config['server_address']))
+            welcome = self.recv().split()
+            self.send("auth_ag ext_user none none\n")
+            self.validate()
+            login = "{} {}".format(self.config['login'], md5chunck(*welcome))
+            self.send("ext_user_log {} {} {}\n".format(login, self.config['data'], self.config['position']))
+            self.validate()
+            self.send_state("actif")
 
     def send_state(self, state):
         possible_state = ["actif", "away", "connection", "idle", "lock", "server", "none"]
