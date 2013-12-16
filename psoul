@@ -176,6 +176,10 @@ def hook(regex, name='std'):
 def on_ping(line, psoul):
     psoul.send(line)
 
+@hook(r'^exit$', 'cmd')
+def cmd_exit(line, psoul):
+    psoul.deconnect()
+
 
 if __name__ == '__main__':
 
@@ -200,6 +204,9 @@ if __name__ == '__main__':
 
                     if s == psoul.socket:
                         hook.trigger(psoul.recv)
+
+                    elif s == sys.stdin:
+                        hook.trigger(sys.stdin.readline(), 'cmd')
 
 
     except KeyboardInterrupt:
