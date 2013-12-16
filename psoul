@@ -113,7 +113,7 @@ class PSoul(Client):
             self.send("ext_user_log {} {} {}\n".format(login, self.config['data'], self.config['position']))
             self.validate()
             self.send_state("actif")
-            if not self.quiet:
+            if not self.quiet and self.alive:
                 print("\rPSoul (Connection to '{}:{}')\nType help for more information\n".
                         format(self.config['server_address'][0], self.config['server_address'][1]))
 
@@ -132,7 +132,7 @@ class PSoul(Client):
 
 
 def hook(regex, name='std'):
-    """Functions' decorator that call the functions decorated when regex match with line
+    """Functions' decorator that call the functions decorated when regex match with the triggered line
 
     @hook(r'^ping.*')
     def server_ping(line):
@@ -166,7 +166,8 @@ def hook(regex, name='std'):
                 else:
                     f(s)
 
-    hook.trigger = trigger
+    if not hasattr(hook, 'trigger'):
+        hook.trigger = trigger
 
     def decorator(func):
         hook.namespaces[name].setdefault(regex, []).append(func)
