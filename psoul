@@ -1,42 +1,41 @@
 #!/usr/bin/python3
 # psoul: A stupid netsoul client
 
+import sys
 import argparse
 import datetime
 import hashlib
-import signal
-import sys
 import socket
+import select
+import re
+from functools import partial
 
-class PSoul:
+class Client:
+    """A basic socket overlay
 
-    config = {
-            'server_address' : ("ns-server.epita.fr", 4242),
-            'login'          : "czegan_g",
-            'password'       : "passwd",
-            'position'       : "<3".replace(' ', '%20'),
-            'data'           : "None".replace(' ', '%20'),
+    with Client() as client:
+        line = client.recv()
+        client.send(line)
+    """
 
-            'verbose'        : False,
-            'quiet'          : False
-            }
+    verbose = False
+    quiet   = False
+    config  = {'server_address' : ("ns-server.epita.fr", 4242)}
 
-    def __init__(self, login=None, password=None):
-        self._alive = False
-        self.config['login'] = login or self.config['login']
-        self.config['password'] = password or self.config['password']
+    def __init__(self):
+        self.alive = False
 
     def __enter__(self):
         self.connect()
         return self
 
     def __exit__(self, type, value, traceback):
-        if self._alive:
+        if self.alive:
             self.deconnect()
 
     def die(self, msg):
-        if not self.config['quiet']:
-            sys.stderr.write("{}: error: {}\n".format(sys.argv[0], msg))
+        if not self.quiet:
+            sys.stderr.write("\r{}: error: {}\n%".format(sys.argv[0], msg))
             self.deconnect()
 
     def connect(self):
@@ -46,24 +45,67 @@ class PSoul:
         except socket.error as e:
             self.die(e)
         else:
-            self._alive = True
+            self.alive = True
 
     def deconnect(self):
-        if self._alive:
-            if not self.config['quiet']:
-                print("{}: closing connection with {}".format(sys.argv[0], self.config['server_address']))
+        if self.alive:
             self.socket.close()
-            self._alive = False
+            self.alive = False
+            if not self.quiet:
+                print("\r", end='')
+
+    @staticmethod
+    def _verbose(msg):
+        now = datetime.datetime.now().strftime("%H:%M")
+        if msg[-1] == '\n':
+            msg = msg[:-1]
+        print("\r{} :: {}".format(now, msg))
+
+    def recv(self, size=1024):
+        if self.alive:
+            try:
+                data = self.socket.recv(size).decode()
+            except socket.error as e:
+                self.die(e)
+            if self.verbose and not self.quiet:
+                self._verbose("recv: {}".format(data))
+            return data
+
+    def send(self, msg):
+        if self.alive:
+            self.socket.send(msg.encode())
+            if self.verbose and not self.quiet:
+                self._verbose("send: {}".format(msg))
+
+
+class PSoul(Client):
+    """A straightforward netsoul protocol interface
+
+    with PSoul(login, password) as psoul:
+        psoul.authentify()
+    """
+
+    def __init__(self, login=None, password=None, position="<3", data="None"):
+        Client.__init__(self)
+        self.config.update({
+            'login'          : login or "czegan_g",
+            'password'       : password or "passwd",
+            'position'       : position.replace(' ', '%20'),
+            'data'           : data.replace(' ', '%20'),
+            })
+
+    def validate(self, hint=None):
+        response = self.recv()
+        if not "rep 002 -- cmd end" in response:
+            self.die("unexpected response from server: '{}'".format(response.strip('\n')))
 
     def authentify(self):
 
         def md5chunck(salut, socketnb, random_hash, host, port, timestamp):
-            chunck = "{}-{}/{}{}".format(random_hash, host, port, self.config['password'])
-            return hashlib.md5(chunck.encode()).hexdigest()
+            chunck = "{}-{}/{}{}".format(random_hash, host, port, self.config['password']).encode()
+            return hashlib.md5(chunck).hexdigest()
 
-        if self._alive:
-            if not self.config['quiet']:
-                print("{}: opening connection with {}".format(sys.argv[0], self.config['server_address']))
+        if self.alive:
             welcome = self.recv().split()
             self.send("auth_ag ext_user none none\n")
             self.validate()
@@ -71,32 +113,9 @@ class PSoul:
             self.send("ext_user_log {} {} {}\n".format(login, self.config['data'], self.config['position']))
             self.validate()
             self.send_state("actif")
-
-    def validate(self):
-        response = self.recv()
-        if not "rep 002 -- cmd end" in response:
-            self.die("unexpected response from server: '{}'".format(response.strip('\n')))
-
-    def _print_verbose(self, msg):
-        now = datetime.datetime.now().strftime("%H:%M")
-        log = "{} :: {}".format(now, msg)
-        print(log, end='') if log[-1] == '\n' else print(log)
-
-    def recv(self, size=1024):
-        if self._alive:
-            try:
-                data = self.socket.recv(size).decode()
-            except socket.error as e:
-                self.die(e)
-            if self.config['verbose'] and not self.config['quiet']:
-                self._print_verbose("recv: {}".format(data))
-            return data
-
-    def send(self, msg):
-        if self._alive:
-            self.socket.send(msg.encode())
-        if self.config['verbose'] and not self.config['quiet']:
-            self._print_verbose("send: {}".format(msg))
+            if not self.quiet:
+                print("\rPSoul (Connection to '{}:{}')\nType help for more information\n".
+                        format(self.config['server_address'][0], self.config['server_address'][1]))
 
     def send_state(self, state):
         possible_state = ["actif", "away", "connection", "idle", "lock", "server", "none"]
@@ -104,27 +123,101 @@ class PSoul:
             die("unexpected state: '{}'".format(state))
         self.send("user_cmd state {}\n".format(state))
 
-    def lazyloop(self):
-        while self._alive:
+    def daemon(self):
+        while self.alive:
             data = self.recv()
             if "ping" in data:
                 self.send(data)
 
-def sighandler(signum, frame):
-    sys.stdout.write("\r")
-    exit(0)
+
+
+def hook(regex, name='std'):
+    """Functions' decorator that call the functions decorated when regex match with line
+
+    @hook(r'^ping.*')
+    def server_ping(line):
+        pass
+
+    @hook(r'^ping.*192\.168\.1\.1)
+    def client_ping(line):
+        pass
+
+    @hook(r'^ping', name='usr')
+    def user_ping(line):
+        pass
+
+    # Call client_ping() and server_ping()
+    hook.trigger("ping 192.168.1.1")
+
+    # Call only user_ping()
+    hook.trigger("ping 192.168.1.1", namespace_used='usr')
+    """
+
+
+    if not hasattr(hook, 'namespaces'):
+        hook.namespaces = {}
+    hook.namespaces.setdefault(name, {})
+
+    def trigger(s, namespace_used='std', obj=None):
+        for r in filter(lambda e: re.match(e, s), hook.namespaces[namespace_used]):
+            for f in hook.namespaces[namespace_used][r]:
+                if obj:
+                    f(s, obj)
+                else:
+                    f(s)
+
+    hook.trigger = trigger
+
+    def decorator(func):
+        hook.namespaces[name].setdefault(regex, []).append(func)
+        return func
+
+    return decorator
+
+@hook(r'^ping.*')
+def on_ping(line, psoul):
+    psoul.send(line)
+
+@hook(r'', 'cmd') # CTRL-D
+@hook(r'^exit$', 'cmd')
+def cmd_exit(line, psoul):
+    psoul.deconnect()
+
+
+def main_loop(psoul):
+    hook.trigger = partial(hook.trigger, obj=psoul)
+    while psoul.alive:
+
+        if not psoul.quiet:
+            print("\r% ", end='')
+
+        inready, outready, excready = select.select([psoul.socket, sys.stdin], [], [])
+        for s in inready:
+            if s == psoul.socket:
+                hook.trigger(psoul.recv)
+            elif s == sys.stdin:
+                hook.trigger(sys.stdin.readline(), 'cmd')
 
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser(usage='%(prog)s [OPTIONS] [login] [password]')
-    parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
-    parser.add_argument("-v", "--verbose", action="store_true", help="explain what being done")
     parser.add_argument("login", nargs='?', help="ionis login (ex: czegan_g)")
     parser.add_argument("password", nargs='?', help="unix password")
+    parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
+    parser.add_argument("-v", "--verbose", action="store_true", help="explain what being done")
+    parser.add_argument("--daemon", action="store_true", help="respond to ping while alive, all silently")
     args = parser.parse_args()
 
-    signal.signal(signal.SIGINT, sighandler)
-    with PSoul(args.login, args.password) as psoul:
-        psoul.config['verbose'] = args.verbose
-        psoul.config['quiet'] = args.quiet
-        psoul.authentify()
-        psoul.lazyloop()
+    try:
+        with PSoul(args.login, args.password) as psoul:
+            psoul.verbose = args.verbose
+            psoul.quiet = args.quiet or args.daemon
+            psoul.authentify()
+
+            if args.daemon:
+                psoul.daemon() # infinite loop while alive
+            else:
+                main_loop(psoul)
+
+    except KeyboardInterrupt:
+        pass
