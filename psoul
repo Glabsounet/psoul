@@ -179,7 +179,7 @@ def hook(regex, name='std'):
 def on_ping(line, psoul):
     psoul.send(line)
 
-@hook(r'', 'cmd') # CTRL-D
+@hook(r'$', 'cmd') # CTRL-D
 @hook(r'^exit$', 'cmd')
 def cmd_exit(line, psoul):
     psoul.deconnect()
