@@ -6,7 +6,9 @@ import argparse
 import datetime
 import hashlib
 import socket
+import select
 import re
+from functools import partial
 
 class Client:
     """A basic socket overlay
@@ -128,7 +130,7 @@ class PSoul(Client):
 
 
 def hook(regex, name='std'):
-    """Decorate your functions to be hooked on a specific regex
+    """Funtions' decorator that call the functions decorated on a specific regex
 
     @hook(r'^ping.*')
     def server_ping(line):
@@ -154,7 +156,7 @@ def hook(regex, name='std'):
         hook.namespaces = {}
     hook.namespaces.setdefault(name, {})
 
-    def trigger(s, obj=None, namespace_used='std'):
+    def trigger(s, namespace_used='std', obj=None):
         for r in filter(lambda e: re.match(e, s), hook.namespaces[namespace_used]):
             for f in hook.namespaces[namespace_used][r]:
                 if obj:
@@ -169,6 +171,10 @@ def hook(regex, name='std'):
         return func
 
     return decorator
+
+@hook(r'^ping.*')
+def on_ping(line, psoul):
+    psoul.send(line)
 
 
 if __name__ == '__main__':
@@ -185,6 +191,16 @@ if __name__ == '__main__':
             psoul.verbose = args.verbose
             psoul.quiet = args.quiet
             psoul.authentify()
-            psoul.daemon()
+
+            hook.trigger = partial(hook.trigger, obj=psoul)
+            while psoul.alive:
+
+                inready, outready, excready = select.select([psoul.socket, sys.stdin], [], [])
+                for s in inready:
+
+                    if s == psoul.socket:
+                        hook.trigger(psoul.recv)
+
+
     except KeyboardInterrupt:
         pass
