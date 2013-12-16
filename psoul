@@ -35,7 +35,7 @@ class Client:
 
     def die(self, msg):
         if not self.quiet:
-            sys.stderr.write("\r{}: error: {}\n".format(sys.argv[0], msg))
+            sys.stderr.write("\r{}: error: {}\n%".format(sys.argv[0], msg))
             self.deconnect()
 
     def connect(self):
@@ -46,21 +46,20 @@ class Client:
             self.die(e)
         else:
             self.alive = True
-            if not self.quiet:
-                print("\r{}: opening connection with {}".format(sys.argv[0], self.config['server_address']))
 
     def deconnect(self):
         if self.alive:
-            if not self.quiet:
-                print("\r{}: closing connection with {}".format(sys.argv[0], self.config['server_address']))
             self.socket.close()
             self.alive = False
+            if not self.quiet:
+                print("\r", end='')
 
     @staticmethod
     def _verbose(msg):
         now = datetime.datetime.now().strftime("%H:%M")
-        log = "{} :: {}".format(now, msg)
-        print(log, end='') if log[-1] == '\n' else print(log)
+        if msg[-1] == '\n':
+            msg = msg[:-1]
+        print("\r{} :: {}".format(now, msg))
 
     def recv(self, size=1024):
         if self.alive:
@@ -114,6 +113,9 @@ class PSoul(Client):
             self.send("ext_user_log {} {} {}\n".format(login, self.config['data'], self.config['position']))
             self.validate()
             self.send_state("actif")
+            if not self.quiet:
+                print("\rPSoul (Connection to '{}:{}')\nType help for more information\n".
+                        format(self.config['server_address'][0], self.config['server_address'][1]))
 
     def send_state(self, state):
         possible_state = ["actif", "away", "connection", "idle", "lock", "server", "none"]
@@ -130,7 +132,7 @@ class PSoul(Client):
 
 
 def hook(regex, name='std'):
-    """Funtions' decorator that call the functions decorated on a specific regex
+    """Functions' decorator that call the functions decorated when regex match with line
 
     @hook(r'^ping.*')
     def server_ping(line):
@@ -176,38 +178,46 @@ def hook(regex, name='std'):
 def on_ping(line, psoul):
     psoul.send(line)
 
+@hook(r'', 'cmd') # CTRL-D
 @hook(r'^exit$', 'cmd')
 def cmd_exit(line, psoul):
     psoul.deconnect()
 
 
+def main_loop(psoul):
+    hook.trigger = partial(hook.trigger, obj=psoul)
+    while psoul.alive:
+
+        if not psoul.quiet:
+            print("\r% ", end='')
+
+        inready, outready, excready = select.select([psoul.socket, sys.stdin], [], [])
+        for s in inready:
+            if s == psoul.socket:
+                hook.trigger(psoul.recv)
+            elif s == sys.stdin:
+                hook.trigger(sys.stdin.readline(), 'cmd')
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(usage='%(prog)s [OPTIONS] [login] [password]')
-    parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
-    parser.add_argument("-v", "--verbose", action="store_true", help="explain what being done")
     parser.add_argument("login", nargs='?', help="ionis login (ex: czegan_g)")
     parser.add_argument("password", nargs='?', help="unix password")
+    parser.add_argument("-q", "--quiet", action="store_true", help="run silently")
+    parser.add_argument("-v", "--verbose", action="store_true", help="explain what being done")
+    parser.add_argument("--daemon", action="store_true", help="respond to ping while alive, all silently")
     args = parser.parse_args()
 
     try:
         with PSoul(args.login, args.password) as psoul:
             psoul.verbose = args.verbose
-            psoul.quiet = args.quiet
+            psoul.quiet = args.quiet or args.daemon
             psoul.authentify()
 
-            hook.trigger = partial(hook.trigger, obj=psoul)
-            while psoul.alive:
-
-                inready, outready, excready = select.select([psoul.socket, sys.stdin], [], [])
-                for s in inready:
-
-                    if s == psoul.socket:
-                        hook.trigger(psoul.recv)
-
-                    elif s == sys.stdin:
-                        hook.trigger(sys.stdin.readline(), 'cmd')
-
+            if args.daemon:
+                psoul.daemon() # infinite loop while alive
+            else:
+                main_loop(psoul)
 
     except KeyboardInterrupt:
         pass
