@@ -125,6 +125,52 @@ class PSoul(Client):
             if "ping" in data:
                 self.send(data)
 
+
+
+def hook(regex, name='std'):
+    """Decorate your functions to be hooked on a specific regex
+
+    @hook(r'^ping.*')
+    def server_ping(line):
+        pass
+
+    @hook(r'^ping.*192\.168\.1\.1)
+    def client_ping(line):
+        pass
+
+    @hook(r'^ping', name='usr')
+    def user_ping(line):
+        pass
+
+    # Call client_ping() and server_ping()
+    hook.trigger("ping 192.168.1.1")
+
+    # Call only user_ping()
+    hook.trigger("ping 192.168.1.1", namespace_used='usr')
+    """
+
+
+    if not hasattr(hook, 'namespaces'):
+        hook.namespaces = {}
+    hook.namespaces.setdefault(name, {})
+
+    def trigger(s, obj=None, namespace_used='std'):
+        for r in filter(lambda e: re.match(e, s), hook.namespaces[namespace_used]):
+            for f in hook.namespaces[namespace_used][r]:
+                if obj:
+                    f(s, obj)
+                else:
+                    f(s)
+
+    hook.trigger = trigger
+
+    def decorator(func):
+        hook.namespaces[name].setdefault(regex, []).append(func)
+        return func
+
+    return decorator
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(usage='%(prog)s [OPTIONS] [login] [password]')
