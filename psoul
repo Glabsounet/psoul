@@ -132,7 +132,7 @@ class PSoul(Client):
 
 
 def hook(regex, name='std'):
-    """Functions' decorator that call the functions decorated when regex match with the triggered line
+    """Basically, it's just an observer with namespaces
 
     @hook(r'^ping.*')
     def server_ping(line):
@@ -179,7 +179,6 @@ def hook(regex, name='std'):
 def on_ping(line, psoul):
     psoul.send(line)
 
-@hook(r'$', 'cmd') # CTRL-D
 @hook(r'^exit$', 'cmd')
 def cmd_exit(line, psoul):
     psoul.deconnect()
@@ -188,14 +187,13 @@ def cmd_exit(line, psoul):
 def main_loop(psoul):
     hook.trigger = partial(hook.trigger, obj=psoul)
     while psoul.alive:
-
         if not psoul.quiet:
             print("\r% ", end='')
 
         inready, outready, excready = select.select([psoul.socket, sys.stdin], [], [])
         for s in inready:
             if s == psoul.socket:
-                hook.trigger(psoul.recv)
+                hook.trigger(psoul.recv())
             elif s == sys.stdin:
                 hook.trigger(sys.stdin.readline(), 'cmd')
 
